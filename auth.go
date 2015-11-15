@@ -13,33 +13,36 @@ const AuthUserKey = "user"
 
 type (
 	authPair struct {
-		User  string `gorm:"column:identifiant"`
-		Value string `gorm:"column:mot_de_passe"`
+		User  string `gorm:"column:identifiant"`  // become username
+		Value string `gorm:"column:mot_de_passe"` // become password
 	}
 )
 
 func isAuthorized(db *gorm.DB, nameOfTable, header string) (*authPair, bool) {
+	// blank login and password with ":" separator return, in base64, a size of 10 char
+	if len(header) <= 10 {
+		return nil, false
+	}
 
 	var i int
 	var u authPair
 	var cred string
 
 	// get credentials from header
-	if value, err := base64.StdEncoding.DecodeString(header); err != nil {
+	if value, err := base64.StdEncoding.DecodeString(header[6:]); err != nil {
 		return nil, false
 	} else {
 		cred = string(value)
 	}
 
-	// check format
-	if i = strings.Index(cred, ":"); len(cred) < 8 || i < 8 {
-		return nil, false
-	}
+	// check ":" separator
+	i = strings.Index(cred, ":")
 
 	// check present in database
 	db.Table(nameOfTable).Select(
 		"identifiant, mot_de_passe").Where(
-		"identifiant=? and mot_de_passe=?", cred[6:i], cred[i:]).Find(&u)
+		"identifiant=? and mot_de_passe=?", cred[:i], cred[i+1:]).Find(&u)
+
 	if reflect.DeepEqual(u, authPair{}) {
 		return nil, false
 	}
@@ -58,6 +61,8 @@ func BasicAuthWithDBForRealm(db *gorm.DB, nameOfTable string) gin.HandlerFunc {
 			c.AbortWithStatus(401)
 			return
 		} else {
+			// The user credentials was found, set user's id to key AuthUserKey in this context, the userId can be read later using
+			// c.Get(basicAuthWithDBForGin.AuthUserKey)
 			c.Set(AuthUserKey, user.User)
 		}
 	}
